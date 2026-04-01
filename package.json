@@ -1,0 +1,26 @@
+{
+  "name": "caption-overlay",
+  "version": "1.0.0",
+  "description": "Snapchat & TikTok style caption overlays for video using FFmpeg and Canvas",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "demo": "node demo.js"
+  },
+  "keywords": [
+    "caption",
+    "overlay",
+    "snapchat",
+    "tiktok",
+    "video",
+    "ffmpeg",
+    "text-on-video"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@napi-rs/canvas": "^0.1.62",
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}
