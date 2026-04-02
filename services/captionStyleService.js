@@ -430,7 +430,7 @@ async function generateSnapchatCaptionCanvas(text, style, videoWidth, options = 
     // Text stroke/border (if user selected border style)
     const borderStyle = options.borderStyle || 'none';
     if (borderStyle === 'full') {
-        const strokeWidth = Math.round(3 * (videoWidth / 1080));
+        const strokeWidth = Math.round((options.borderWidth || 8) * (videoWidth / 1080));
         ctx.strokeStyle = options.borderColor || '#000000';
         ctx.lineWidth = strokeWidth;
         ctx.lineJoin = 'round';
@@ -837,9 +837,9 @@ export function generateTikTokCaptionCanvas(text, styleId, options = {}) {
     const highlightColor = options.textColor || style.highlightColor || style.highlightGradient?.[0] || '#FFFF00';
     const baseColor = options.textColor || style.baseColor || '#FFFFFF';
     const strokeColor = options.borderColor || style.stroke?.color || '#000000';
+    const baseStrokeWidth = options.borderWidth || (style.stroke ? (style.stroke.width || 8) : 8);
     const strokeWidth = options.borderStyle === 'none' ? 0
-        : style.stroke ? Math.round((style.stroke.width || 2) * (videoWidth / 1080))
-        : Math.round(2 * (videoWidth / 1080));
+        : Math.round(baseStrokeWidth * (videoWidth / 1080));
 
     // Shadow
     const shadow = style.shadow || {};

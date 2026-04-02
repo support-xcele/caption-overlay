@@ -119,6 +119,7 @@ export async function applySnapchatCaptions(videoPath, sceneCaptions, outputPath
                     textColor: scene.textColor,
                     borderColor: scene.borderColor,
                     borderStyle: scene.borderStyle,
+                    borderWidth: scene.borderWidth,
                 }
             );
 
@@ -353,6 +354,7 @@ export async function applyTikTokCaptions(videoPath, sceneCaptions, outputPath, 
                     textColor: scene.textColor,
                     borderColor: scene.borderColor,
                     borderStyle: scene.borderStyle,
+                    borderWidth: scene.borderWidth,
                 }
             );
 

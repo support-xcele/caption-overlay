@@ -401,7 +401,7 @@ await applySceneCaptions(videoPath, [
 | `textColor` | string | style default | Hex: `'#FFFFFF'` |
 | `borderColor` | string | style default | Stroke color: `'#000000'` |
 | `borderStyle` | string | `'none'` | `'full'` (stroke), `'shadow'`, `'none'` |
-| `borderWidth` | number | style default | Stroke width in px |
+| `borderWidth` | number | `8` | Stroke width in px (scales with video width). Snapchat default=8, TikTok default=style's stroke.width or 8 |
 | `displayMode` | string | `'animated'` | TikTok: `'animated'` or `'static'` |
 
 ---
