@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caption Editor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d0d1a;
+  color: #eee;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+/* Header */
+.header {
+  background: #13132a;
+  border-bottom: 1px solid #252545;
+  padding: 12px 20px;
+  display: flex; align-items: center; gap: 10px;
+}
+.header-thumb {
+  width: 36px; height: 36px; border-radius: 6px;
+  background: #333; overflow: hidden; flex-shrink: 0;
+}
+.header-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.header h1 { font-size: 15px; font-weight: 700; color: #fff; }
+
+/* Step labels */
+.step-label {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px 8px;
+  font-size: 14px; font-weight: 700; color: #fff;
+}
+.step-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #7c3aed; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; flex-shrink: 0;
+}
+
+/* Scene bar */
+.scene-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 20px 12px;
+}
+.scene-tab {
+  background: #7c3aed; color: #fff;
+  border: none; border-radius: 20px;
+  padding: 5px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.add-text-btn {
+  background: transparent; color: #aaa;
+  border: 1px dashed #444; border-radius: 20px;
+  padding: 5px 12px; font-size: 13px; cursor: pointer;
+}
+
+/* Main editor */
+.editor-area {
+  display: flex; gap: 0; padding: 0 20px;
+}
+
+/* Video preview */
+.preview-col { flex: 0 0 auto; }
+.video-wrap {
+  width: 260px; height: 400px;
+  border-radius: 10px; overflow: hidden; position: relative;
+  background: #111; border: 1px solid #333;
+}
+.video-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Dashed caption box overlay */
+.caption-box-overlay {
+  position: absolute; left: 0; right: 0;
+  border-top: 1.5px dashed rgba(255,200,100,0.7);
+  border-bottom: 1.5px dashed rgba(255,200,100,0.7);
+  pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 36px;
+}
+.caption-box-text {
+  color: rgba(255,255,255,0.85);
+  font-size: 13px; font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  padding: 4px 8px; text-align: center;
+}
+
+.video-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.2s;
+}
+.video-wrap:hover .video-overlay { opacity: 1; }
+.play-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.9);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 16px; color: #000;
+}
+.y-badge {
+  position: absolute; bottom: 6px; right: 8px;
+  font-size: 11px; color: rgba(255,255,255,0.55);
+}
+.spinner-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.6);
+  display: none; align-items: center; justify-content: center;
+  border-radius: 10px; font-size: 12px; color: #aaa;
+}
+.spinner-overlay.active { display: flex; }
+
+/* Controls panel */
+.controls-col {
+  flex: 1; padding-left: 20px;
+  display: flex; flex-direction: column; gap: 13px;
+}
+
+.panel-row {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-size: 13px; font-weight: 700; color: #fff; }
+.panel-count { font-size: 12px; color: #888; margin-left: 4px; }
+.add-caption-link { font-size: 12px; color: #7c3aed; cursor: pointer; }
+
+/* Layer pill */
+.layer-pill {
+  background: #7c3aed; border-radius: 20px;
+  padding: 6px 14px; font-size: 13px; color: #fff; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; width: fit-content;
+}
+.layer-dot { width: 8px; height: 8px; border-radius: 50%; background: #c4b5fd; flex-shrink: 0; }
+
+/* Fields */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #666; }
+textarea {
+  background: #0a0a1a; border: 1px solid #2a2a4a; color: #fff;
+  padding: 8px 10px; border-radius: 8px; font-size: 14px;
+  resize: none; height: 64px; width: 100%; font-family: inherit;
+}
+
+/* Caption type toggle */
+.type-toggle { display: flex; gap: 6px; }
+.type-btn {
+  flex: 1; padding: 7px; border-radius: 8px;
+  border: 1px solid #333; background: #111;
+  color: #888; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.type-btn.active { border-color: #7c3aed; color: #fff; background: #1a0a30; }
+
+/* Size + position */
+.size-row { display: flex; align-items: center; gap: 8px; }
+.size-row input[type=range] { flex: 1; accent-color: #7c3aed; }
+.pos-btns { display: flex; gap: 4px; }
+.pos-btn {
+  padding: 4px 9px; border-radius: 6px;
+  border: 1px solid #333; background: #111;
+  color: #888; font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.pos-btn.active { border-color: #7c3aed; color: #fff; background: #1a0a30; }
+
+/* Timing */
+.timing-row { display: flex; gap: 10px; }
+.timing-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.timing-field label { font-size: 11px; color: #666; }
+.timing-field input {
+  background: #0a0a1a; border: 1px solid #2a2a4a; color: #fff;
+  padding: 6px 8px; border-radius: 6px; font-size: 13px; width: 100%;
+}
+
+/* ── Style section ──────────────────────────── */
+.styles-section { padding: 16px 20px 0; }
+.section-cols { display: flex; gap: 24px; }
+.section-col { flex: 1; }
+.section-col h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+  color: #666; margin-bottom: 10px;
+}
+
+.style-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.style-card {
+  width: 82px; text-align: center; cursor: pointer;
+  border-radius: 8px; overflow: hidden;
+  border: 2px solid transparent; transition: border-color 0.15s;
+}
+.style-card.active { border-color: #7c3aed; }
+.style-preview {
+  height: 44px; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+}
+.style-name { font-size: 10px; color: #777; padding: 3px 2px; background: #111; line-height: 1.3; }
+.style-card.active .style-name { color: #c4b5fd; }
+
+/* Colors section */
+.color-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.swatch {
+  width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.15s; flex-shrink: 0;
+}
+.swatch.active { border-color: #fff; }
+.swatch-add {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: transparent; border: 1.5px dashed #444;
+  display: flex; align-items: center; justify-content: center;
+  color: #555; font-size: 14px; cursor: pointer;
+}
+
+.border-row { display: flex; gap: 5px; margin-bottom: 8px; }
+.border-btn {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid #333; background: #111;
+  color: #888; font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.border-btn.active { border-color: #7c3aed; color: #fff; background: #1a0a30; }
+
+.thickness-row { display: flex; align-items: center; gap: 8px; }
+.thickness-row input[type=range] { flex: 1; accent-color: #7c3aed; }
+.thickness-val { font-size: 12px; color: #666; min-width: 16px; }
+
+/* ── Render section ─────────────────────────── */
+.render-section { padding: 16px 20px 0; }
+.burn-btn {
+  background: #7c3aed; color: #fff; border: none;
+  border-radius: 10px; padding: 12px 22px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; transition: opacity 0.15s;
+}
+.burn-btn:hover { opacity: 0.85; }
+.burn-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.burn-status { font-size: 12px; color: #666; margin-top: 8px; min-height: 18px; }
+
+/* Spinner ring */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-ring {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+  animation: spin 0.7s linear infinite; display: none;
+}
+.spin-ring.active { display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-thumb"><img id="thumb-img" src="" alt=""></div>
+  <h1>Caption Editor</h1>
+</div>
+
+<!-- Step 2 -->
+<div class="step-label">
+  <div class="step-num">2</div>
+  Configure Captions
+</div>
+
+<div class="scene-bar">
+  <button class="scene-tab">Scene 1 *</button>
+  <button class="add-text-btn">+ Text</button>
+</div>
+
+<div class="editor-area">
+  <!-- Video preview -->
+  <div class="preview-col">
+    <div class="video-wrap" id="video-wrap">
+      <img id="preview-img" src="" alt="Loading preview...">
+      <!-- caption position indicator (no text — real caption is in the rendered image) -->
+      <div class="caption-box-overlay" id="caption-overlay-box"></div>
+      <div class="video-overlay"><div class="play-btn">▶</div></div>
+      <div class="y-badge" id="y-badge">Y: 68%</div>
+      <div class="spinner-overlay" id="spinner">
+        <div class="spin-ring active" style="margin-right:6px"></div>
+        Rendering...
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-col">
+    <div class="panel-row">
+      <span class="panel-title">Text Layers <span class="panel-count">(1)</span></span>
+      <span class="add-caption-link">+ Add Caption</span>
+    </div>
+
+    <div class="layer-pill">
+      <div class="layer-dot"></div>
+      <span id="layer-label">dm me on telegram</span>
+    </div>
+
+    <div class="field">
+      <label>Caption Text</label>
+      <textarea id="caption-text" oninput="onTextChange()">DM me on Telegram</textarea>
+    </div>
+
+    <div class="field">
+      <label>Caption Type</label>
+      <div class="type-toggle">
+        <button class="type-btn active" id="type-snapchat" onclick="setType('snapchat',this)">Snapchat</button>
+        <button class="type-btn" id="type-capcut" onclick="setType('capcut',this)">CapCut</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Size <span id="size-val" style="color:#c4b5fd;font-weight:600">16px</span></label>
+      <div class="size-row">
+        <input type="range" id="font-size" min="12" max="56" value="16" step="1" oninput="onSizeChange()">
+        <div class="pos-btns">
+          <button class="pos-btn" onclick="setPos('top',this)">Top</button>
+          <button class="pos-btn" onclick="setPos('center',this)">Center</button>
+          <button class="pos-btn active" onclick="setPos('bottom',this)">Bottom</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Vertical Position <span id="y-val" style="color:#c4b5fd;font-weight:600">68%</span></label>
+      <input type="range" id="y-pos" min="50" max="92" value="68" step="1" oninput="onYChange()">
+    </div>
+
+    <div class="timing-row">
+      <div class="timing-field">
+        <label>Enter (s)</label>
+        <input type="number" id="enter-time" value="0" min="0" step="0.5">
+      </div>
+      <div class="timing-field">
+        <label>Exit (s)</label>
+        <input type="number" id="exit-time" value="10" min="0" step="0.5">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Style + Colors -->
+<div class="styles-section">
+  <div class="section-cols">
+    <div class="section-col">
+      <h3>Style</h3>
+      <div class="style-grid" id="style-grid">
+        <!-- Populated from /api/caption-styles -->
+      </div>
+    </div>
+    <div class="section-col">
+      <h3>Colors &amp; Border</h3>
+      <div class="color-row" id="color-swatches">
+        <div class="swatch active" style="background:#fff" data-color="#ffffff" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#000" data-color="#000000" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#FFFC00" data-color="#FFFC00" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#00CFFF" data-color="#00CFFF" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#FF1493" data-color="#FF1493" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#FF6600" data-color="#FF6600" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#00CC44" data-color="#00CC44" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#7c3aed" data-color="#7c3aed" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#FF7700" data-color="#FF7700" onclick="setSwatch(this)"></div>
+        <div class="swatch" style="background:#FF0000" data-color="#FF0000" onclick="setSwatch(this)"></div>
+        <div class="swatch-add">+</div>
+      </div>
+      <div style="font-size:11px;color:#666;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.8px">Border</div>
+      <div class="color-row" id="border-swatches">
+        <div class="swatch active" style="background:#000;border-color:#555" data-color="#000000" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#fff" data-color="#ffffff" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#FF0000" data-color="#FF0000" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#0000FF" data-color="#0000FF" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#FFFC00" data-color="#FFFC00" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#FF1493" data-color="#FF1493" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#00CC44" data-color="#00CC44" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#7c3aed" data-color="#7c3aed" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch" style="background:#FF7700" data-color="#FF7700" onclick="setBorderSwatch(this)"></div>
+        <div class="swatch-add">+</div>
+      </div>
+      <div class="border-row">
+        <button class="border-btn" onclick="setBorder('none',this)">None</button>
+        <button class="border-btn" onclick="setBorder('shadow',this)">Shadow</button>
+        <button class="border-btn active" onclick="setBorder('full',this)">Border</button>
+      </div>
+      <div class="thickness-row">
+        <span style="font-size:11px;color:#666">Thickness</span>
+        <input type="range" id="thickness" min="1" max="12" value="8" step="1" oninput="onThicknessChange()">
+        <span class="thickness-val" id="thickness-val">8</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3 -->
+<div class="step-label" style="margin-top:8px">
+  <div class="step-num">3</div>
+  Render &amp; Export
+</div>
+<div class="render-section">
+  <button class="burn-btn" id="burn-btn" onclick="burnVideo()">
+    <span>⊙</span> Burn Captions into Video
+  </button>
+  <div class="burn-status" id="burn-status"></div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  let state = {
+    text: 'DM me on Telegram',
+    styleId: 'classic_white',
+    styleType: 'snapchat',
+    fontSize: 16,
+    yPercent: 68,
+    position: 'bottom',
+    textColor: '#ffffff',
+    borderColor: '#000000',
+    borderStyle: 'full',
+    borderWidth: 8,
+    seekTime: 2,
+    trimStart: 0,
+  };
+
+  let debounce;
+
+  // ── Init ───────────────────────────────────────────────────────
+  window.onload = async () => {
+    await loadStyles();
+    // Set thumb from first preview frame
+    updatePreviewFrame();
+  };
+
+  async function loadStyles() {
+    try {
+      const res = await fetch('/api/caption-styles');
+      const data = await res.json();
+      renderStyleGrid(data.snapchat || []);
+    } catch(e) {
+      // Fallback static styles
+      renderStyleGridStatic();
+    }
+  }
+
+  function renderStyleGrid(styles) {
+    const grid = document.getElementById('style-grid');
+    const COLORS = {
+      classic_white:  { bg: 'rgba(0,0,0,0.6)', text: '#fff' },
+      neon_pink:      { bg: '#FF1493', text: '#fff' },
+      story_blue:     { bg: 'linear-gradient(135deg,#667eea,#764ba2)', text: '#fff' },
+      fire_orange:    { bg: '#FF6B35', text: '#fff' },
+      mint_fresh:     { bg: '#98FF98', text: '#1a1a1a' },
+      dark_mode:      { bg: 'rgba(0,0,0,0.8)', text: '#fff' },
+      yellow_pop:     { bg: '#FFE135', text: '#000' },
+      purple_dream:   { bg: 'linear-gradient(135deg,#8B5CF6,#EC4899)', text: '#fff' },
+    };
+    const NAMES = {
+      classic_white: 'Classic Snapchat', neon_pink: 'Neon Pink',
+      story_blue: 'Story Blue', fire_orange: 'Fire Orange',
+      mint_fresh: 'Mint Fresh', dark_mode: 'Dark Mode',
+      yellow_pop: 'Yellow Pop', purple_dream: 'Purple Dream',
+    };
+    grid.innerHTML = styles.map(s => {
+      const c = COLORS[s.id] || { bg: '#333', text: '#fff' };
+      const name = NAMES[s.id] || s.name;
+      const active = s.id === state.styleId ? 'active' : '';
+      return `<div class="style-card ${active}" data-id="${s.id}" onclick="setStyle('${s.id}',this)">
+        <div class="style-preview" style="background:${c.bg}"><span style="color:${c.text};font-size:13px;font-weight:700">Aa</span></div>
+        <div class="style-name">${name}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderStyleGridStatic() {
+    const styles = [
+      { id: 'classic_white', name: 'Classic Snapchat', bg: 'rgba(0,0,0,0.6)', text: '#fff' },
+      { id: 'neon_pink', name: 'Neon Pink', bg: '#FF1493', text: '#fff' },
+      { id: 'story_blue', name: 'Story Blue', bg: 'linear-gradient(135deg,#667eea,#764ba2)', text: '#fff' },
+      { id: 'fire_orange', name: 'Fire Orange', bg: '#FF6B35', text: '#fff' },
+      { id: 'mint_fresh', name: 'Mint Fresh', bg: '#98FF98', text: '#1a1a1a' },
+      { id: 'dark_mode', name: 'Dark Mode', bg: 'rgba(0,0,0,0.8)', text: '#fff' },
+      { id: 'yellow_pop', name: 'Yellow Pop', bg: '#FFE135', text: '#000' },
+      { id: 'purple_dream', name: 'Purple Dream', bg: 'linear-gradient(135deg,#8B5CF6,#EC4899)', text: '#fff' },
+    ];
+    const grid = document.getElementById('style-grid');
+    grid.innerHTML = styles.map(s => {
+      const active = s.id === state.styleId ? 'active' : '';
+      return `<div class="style-card ${active}" data-id="${s.id}" onclick="setStyle('${s.id}',this)">
+        <div class="style-preview" style="background:${s.bg}"><span style="color:${s.text};font-size:13px;font-weight:700">Aa</span></div>
+        <div class="style-name">${s.name}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Handlers ───────────────────────────────────────────────────
+  function onTextChange() {
+    state.text = document.getElementById('caption-text').value;
+    document.getElementById('layer-label').textContent = state.text.toLowerCase();
+    document.getElementById('caption-box-label').textContent = state.text;
+    schedulePreview();
+  }
+
+  function onSizeChange() {
+    state.fontSize = parseInt(document.getElementById('font-size').value);
+    document.getElementById('size-val').textContent = state.fontSize + 'px';
+    schedulePreview();
+  }
+
+  function onYChange() {
+    state.yPercent = parseFloat(document.getElementById('y-pos').value);
+    document.getElementById('y-val').textContent = state.yPercent + '%';
+    document.getElementById('y-badge').textContent = 'Y: ' + state.yPercent + '%';
+    updateCaptionBoxPosition();
+    schedulePreview();
+  }
+
+  function onThicknessChange() {
+    state.borderWidth = parseInt(document.getElementById('thickness').value);
+    document.getElementById('thickness-val').textContent = state.borderWidth;
+    schedulePreview();
+  }
+
+  function setType(type, btn) {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.styleType = type === 'capcut' ? 'snapchat' : 'snapchat'; // both use snapchat path for now
+    schedulePreview();
+  }
+
+  function setPos(pos, btn) {
+    document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.position = pos;
+    if (pos === 'top')    { state.yPercent = 10; document.getElementById('y-pos').value = 10; document.getElementById('y-val').textContent = '10%'; }
+    if (pos === 'center') { state.yPercent = 48; document.getElementById('y-pos').value = 48; document.getElementById('y-val').textContent = '48%'; }
+    if (pos === 'bottom') { state.yPercent = 68; document.getElementById('y-pos').value = 68; document.getElementById('y-val').textContent = '68%'; }
+    document.getElementById('y-badge').textContent = 'Y: ' + state.yPercent + '%';
+    updateCaptionBoxPosition();
+    schedulePreview();
+  }
+
+  function setStyle(styleId, card) {
+    document.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    state.styleId = styleId;
+    schedulePreview();
+  }
+
+  function setSwatch(el) {
+    document.querySelectorAll('#color-swatches .swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    state.textColor = el.dataset.color;
+    schedulePreview();
+  }
+
+  function setBorderSwatch(el) {
+    document.querySelectorAll('#border-swatches .swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    state.borderColor = el.dataset.color;
+    schedulePreview();
+  }
+
+  function setBorder(style, btn) {
+    document.querySelectorAll('.border-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.borderStyle = style;
+    schedulePreview();
+  }
+
+  // ── Caption box position overlay ───────────────────────────────
+  function updateCaptionBoxPosition() {
+    const wrap = document.getElementById('video-wrap');
+    const box = document.getElementById('caption-overlay-box');
+    const wrapH = wrap.offsetHeight || 400;
+    const yPx = Math.round(wrapH * (state.yPercent / 100));
+    box.style.top = (yPx - 18) + 'px';
+  }
+
+  // ── Preview frame fetch ────────────────────────────────────────
+  function schedulePreview() {
+    clearTimeout(debounce);
+    debounce = setTimeout(updatePreviewFrame, 500);
+  }
+
+  async function updatePreviewFrame() {
+    const spinner = document.getElementById('spinner');
+    spinner.classList.add('active');
+
+    try {
+      const res = await fetch('/api/preview-frame', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      document.getElementById('preview-img').src = url;
+      document.getElementById('thumb-img').src = url;
+      updateCaptionBoxPosition();
+    } catch(e) {
+      console.error('Preview error:', e.message);
+      document.getElementById('burn-status').textContent = '⚠ Preview error: ' + e.message;
+    } finally {
+      spinner.classList.remove('active');
+    }
+  }
+
+  // ── Burn video ─────────────────────────────────────────────────
+  async function burnVideo() {
+    const btn = document.getElementById('burn-btn');
+    const status = document.getElementById('burn-status');
+    btn.disabled = true;
+    status.textContent = 'Burning captions... (~30s)';
+
+    try {
+      const res = await fetch('/api/burn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'edited_video.mp4'; a.click();
+      status.textContent = '✓ Done! Video downloaded.';
+    } catch(e) {
+      status.textContent = '✗ Error: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Init caption box position after layout
+  setTimeout(updateCaptionBoxPosition, 100);
+</script>
+</body>
+</html>
