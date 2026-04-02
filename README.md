@@ -360,6 +360,509 @@ await captionTemplates.duplicateTemplate(custom.id, 'My Style v2');
 await captionTemplates.deleteTemplate(custom.id);
 ```
 
+---
+
+## Backend Integration (Express/FastAPI Server)
+
+This section explains how to wire the caption services into a backend API server so a frontend (or another service) can request captions over HTTP.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  FRONTEND (Browser / App)                                           │
+│                                                                     │
+│  CaptionEditor UI ──────────────────┐                               │
+│  - Pick style (snapchat/tiktok)     │                               │
+│  - Set text per scene               │  HTTP requests                │
+│  - Adjust position, font, color     │                               │
+│  - Preview in canvas                │                               │
+└─────────────────────────────────────┼───────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  BACKEND (Node.js / Express)                                        │
+│                                                                     │
+│  API Routes                         Services                        │
+│  ─────────────                      ────────                        │
+│  GET  /api/caption-styles      ──→  captionStyleService             │
+│  GET  /api/caption-templates   ──→  captionTemplateService          │
+│  POST /api/caption-templates   ──→  captionTemplateService          │
+│  POST /api/caption-preview     ──→  sceneCaptionService             │
+│  POST /api/apply-captions      ──→  sceneCaptionService             │
+│  POST /api/caption-test/render ──→  sceneCaptionService             │
+│                                                                     │
+│  Pipeline Integration (optional)                                    │
+│  ────────────────────────────────                                   │
+│  viralReelPipeline Step 6      ──→  sceneCaptionService             │
+│    (auto-applies captions as         .applySceneCaptions()          │
+│     part of video processing)                                       │
+└─────────────────────────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  RENDERING LAYER                                                    │
+│                                                                     │
+│  sceneCaptionService (orchestrator)                                 │
+│    │                                                                │
+│    ├──→ captionStyleService                                         │
+│    │      ├── generateSnapchatCaption()  → Canvas PNG buffer        │
+│    │      ├── generateTikTokCaptionCanvas() → array of PNG buffers  │
+│    │      └── generateSnapchatCaptionFFmpeg() → drawtext filter     │
+│    │                                                                │
+│    └──→ FFmpeg (child_process.spawn)                                │
+│           ├── overlay=... filter (composites PNGs onto video)       │
+│           └── drawtext=... filter (burns text directly)             │
+│                                                                     │
+│  Output: video file with captions baked in                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### API Endpoints
+
+Here's every endpoint you need to add to your Express server, with exact request/response formats.
+
+#### 1. `GET /api/caption-styles` — List all available styles
+
+Returns all Snapchat and TikTok style presets so the frontend can display them as options.
+
+```js
+import * as captionStyleService from './services/captionStyleService.js';
+
+app.get('/api/caption-styles', (req, res) => {
+  const styles = captionStyleService.getAllStyles();
+  res.json(styles);
+});
+```
+
+**Response:**
+```json
+{
+  "snapchat": [
+    {
+      "id": "classic_white",
+      "name": "Classic Snapchat",
+      "type": "snapchat",
+      "preview": {
+        "background": "rgba(0, 0, 0, 0.6)",
+        "gradient": null,
+        "textColor": "#FFFFFF",
+        "borderRadius": 0,
+        "glow": false
+      }
+    }
+  ],
+  "tiktok": [
+    {
+      "id": "classic_yellow",
+      "name": "Classic Yellow",
+      "type": "tiktok",
+      "preview": {
+        "highlightColor": "#FFFF00",
+        "baseColor": "#FFFFFF",
+        "stroke": "#000000",
+        "strokeWidth": 3,
+        "fontSize": 56,
+        "glow": false
+      }
+    }
+  ]
+}
+```
+
+#### 2. `POST /api/caption-preview` — Generate a preview image
+
+Returns a base64 PNG for Snapchat styles, or style metadata for TikTok styles.
+
+```js
+import * as sceneCaptionService from './services/sceneCaptionService.js';
+
+app.post('/api/caption-preview', async (req, res) => {
+  const { text, styleId, styleType } = req.body;
+  const preview = await sceneCaptionService.previewCaption(
+    text,
+    styleId || 'classic_white',
+    styleType || 'snapchat'
+  );
+  res.json(preview);
+});
+```
+
+**Request:**
+```json
+{
+  "text": "Your caption here",
+  "styleId": "classic_white",
+  "styleType": "snapchat"
+}
+```
+
+**Response (Snapchat):**
+```json
+{
+  "type": "image",
+  "data": "data:image/png;base64,iVBORw0KGgo...",
+  "width": 1084,
+  "height": 72
+}
+```
+
+**Response (TikTok):**
+```json
+{
+  "type": "info",
+  "style": { "id": "classic_yellow", "highlightColor": "#FFFF00", "animation": "pop" },
+  "highlightColor": "#FFFF00",
+  "animation": "pop"
+}
+```
+
+#### 3. `POST /api/apply-captions` — Apply captions to a video file
+
+The main endpoint. Takes a video path and array of scene captions, renders them onto the video, writes the output file.
+
+```js
+import * as sceneCaptionService from './services/sceneCaptionService.js';
+
+app.post('/api/apply-captions', async (req, res) => {
+  const { videoPath, sceneCaptions, outputPath } = req.body;
+
+  if (!videoPath || !sceneCaptions || !outputPath) {
+    return res.status(400).json({ error: 'videoPath, sceneCaptions, and outputPath are required' });
+  }
+
+  const result = await sceneCaptionService.applySceneCaptions(
+    videoPath,
+    sceneCaptions,
+    outputPath
+  );
+
+  res.json(result);
+});
+```
+
+**Request:**
+```json
+{
+  "videoPath": "/tmp/uploads/input.mp4",
+  "outputPath": "/tmp/output/captioned.mp4",
+  "sceneCaptions": [
+    {
+      "sceneNumber": 0,
+      "startTime": 0,
+      "endTime": 3.5,
+      "duration": 3.5,
+      "caption": "This is scene one",
+      "style": "classic_white",
+      "styleType": "snapchat",
+      "position": { "x": 0.5, "y": 0.8 },
+      "font": "Inter",
+      "fontSize": 28,
+      "fontWeight": "bold",
+      "textColor": "#FFFFFF",
+      "borderColor": "#000000",
+      "borderStyle": "full",
+      "borderWidth": 3,
+      "displayMode": "static"
+    },
+    {
+      "sceneNumber": 1,
+      "startTime": 3.5,
+      "endTime": 7,
+      "duration": 3.5,
+      "caption": "Each word lights up",
+      "style": "classic_yellow",
+      "styleType": "tiktok",
+      "position": { "x": 0.5, "y": 0.75 },
+      "displayMode": "animated"
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "outputPath": "/tmp/output/captioned.mp4"
+}
+```
+
+#### 4. `POST /api/caption-test/render` — Test station (upload video + render)
+
+Accepts a video file upload via `multipart/form-data` along with a JSON captions config. Useful for testing captions without running the full pipeline.
+
+```js
+import multer from 'multer';
+const upload = multer({ dest: 'temp/uploads/' });
+
+app.post('/api/caption-test/render', upload.single('video'), async (req, res) => {
+  const videoPath = req.file.path;
+  const captions = JSON.parse(req.body.captions || '{}');
+
+  if (!captions.scenes || captions.scenes.length === 0) {
+    return res.status(400).json({ error: 'No caption scenes provided' });
+  }
+
+  const metadata = await sceneCaptionService.getVideoMetadata(videoPath);
+  const outputId = `caption_${Date.now()}`;
+  const outputPath = `temp/output/${outputId}.mp4`;
+
+  const sceneCaptions = captions.scenes.map((scene, idx) => ({
+    sceneNumber: idx,
+    startTime: scene.startTime || 0,
+    endTime: scene.endTime || metadata.duration,
+    duration: (scene.endTime || metadata.duration) - (scene.startTime || 0),
+    caption: scene.caption || '',
+    style: scene.style || captions.defaultStyle || 'classic_white',
+    styleType: scene.styleType || captions.defaultStyleType || 'snapchat',
+    position: scene.position,
+    font: scene.font,
+    fontSize: scene.fontSize,
+    fontWeight: scene.fontWeight,
+    textColor: scene.textColor,
+    borderColor: scene.borderColor,
+    borderStyle: scene.borderStyle,
+    borderWidth: scene.borderWidth,
+    displayMode: scene.displayMode || 'static',
+  }));
+
+  const result = await sceneCaptionService.applySceneCaptions(videoPath, sceneCaptions, outputPath);
+
+  res.json({
+    success: true,
+    outputUrl: `/api/caption-test/output/${outputId}.mp4`,
+  });
+});
+
+// Serve the rendered output
+app.get('/api/caption-test/output/:filename', (req, res) => {
+  const filePath = `temp/output/${req.params.filename}`;
+  res.sendFile(filePath, { root: process.cwd() });
+});
+```
+
+#### 5. Template CRUD endpoints
+
+```js
+import * as captionTemplateService from './services/captionTemplateService.js';
+
+// List all templates
+app.get('/api/caption-templates', async (req, res) => {
+  const templates = await captionTemplateService.getAllTemplates();
+  res.json(templates);
+});
+
+// Get one template
+app.get('/api/caption-templates/:id', async (req, res) => {
+  const template = await captionTemplateService.getTemplateById(req.params.id);
+  if (!template) return res.status(404).json({ error: 'Template not found' });
+  res.json(template);
+});
+
+// Create template
+app.post('/api/caption-templates', async (req, res) => {
+  const template = await captionTemplateService.createTemplate(req.body);
+  res.json({ success: true, template });
+});
+
+// Update template
+app.put('/api/caption-templates/:id', async (req, res) => {
+  const template = await captionTemplateService.updateTemplate(req.params.id, req.body);
+  if (!template) return res.status(404).json({ error: 'Template not found' });
+  res.json({ success: true, template });
+});
+
+// Delete template
+app.delete('/api/caption-templates/:id', async (req, res) => {
+  const deleted = await captionTemplateService.deleteTemplate(req.params.id);
+  if (!deleted) return res.status(404).json({ error: 'Template not found' });
+  res.json({ success: true });
+});
+```
+
+### Scene Caption Object — Full Field Reference
+
+Every field you can pass per scene in the `sceneCaptions` array:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `sceneNumber` | number | yes | — | Scene index (0-based) |
+| `startTime` | number | yes | — | Start time in seconds |
+| `endTime` | number | yes | — | End time in seconds |
+| `duration` | number | no | `endTime - startTime` | Duration in seconds |
+| `caption` | string | yes | — | The text to display. Supports `\n` for line breaks |
+| `style` | string | no | `'classic_white'` | Style preset ID (see style tables above) |
+| `styleType` | string | no | `'snapchat'` | `'snapchat'` or `'tiktok'` — determines render path |
+| `position` | object | no | bottom of frame | `{ x: 0.5, y: 0.8 }` — normalized 0-1 coordinates |
+| `font` | string | no | style default | Font name: `'Inter'`, `'Montserrat'`, `'Bebas Neue'`, `'Poppins'`, `'Bangers'`, etc. |
+| `fontSize` | number | no | style default | Base font size in px (scales with video width) |
+| `fontWeight` | string | no | style default | `'normal'`, `'bold'`, or `'black'` |
+| `textColor` | string | no | style default | Hex color for text: `'#FFFFFF'` |
+| `borderColor` | string | no | style default | Hex color for stroke/outline: `'#000000'` |
+| `borderStyle` | string | no | `'none'` | `'full'` (stroke), `'shadow'` (drop shadow), or `'none'` |
+| `borderWidth` | number | no | style default | Stroke width in px |
+| `displayMode` | string | no | `'animated'` | TikTok only: `'animated'` (word-by-word) or `'static'` (all at once) |
+
+### Rendering Flow — What Happens Inside
+
+When `applySceneCaptions()` is called, here's the exact sequence:
+
+```
+1. READ VIDEO METADATA
+   └─ ffprobe → { width, height, duration, fps }
+
+2. ROUTE BY STYLE TYPE
+   ├─ styleType === 'snapchat' → applySnapchatCaptions()
+   └─ styleType === 'tiktok'  → applyTikTokCaptions()
+
+3a. SNAPCHAT PATH
+    ├─ For each scene with text:
+    │   └─ generateSnapchatCaption(text, style, options)
+    │       ├─ Canvas available? → render PNG buffer (full-width bar + text)
+    │       └─ No canvas?       → build FFmpeg drawtext filter string
+    │
+    ├─ Canvas path:
+    │   ├─ Write PNG files to temp dir
+    │   ├─ Build FFmpeg filter_complex:
+    │   │   [0:v][1:v]overlay=x=X:y=Y:enable='between(t,start,end)'[v0];
+    │   │   [v0][2:v]overlay=x=X:y=Y:enable='between(t,start,end)'[vout]
+    │   └─ Run: ffmpeg -i video.mp4 -i caption0.png -i caption1.png -filter_complex "..." -map [vout] output.mp4
+    │
+    └─ Drawtext path:
+        ├─ Chain drawtext filters with enable timing:
+        │   drawtext=text='...':font=...:enable='between(t,0,3)',
+        │   drawtext=text='...':font=...:enable='between(t,3,6)'
+        └─ Run: ffmpeg -i video.mp4 -vf "drawtext=...,drawtext=..." output.mp4
+
+3b. TIKTOK PATH
+    ├─ For each scene with text:
+    │   └─ generateTikTokCaptionCanvas(text, style, options)
+    │       ├─ Split text into display lines (by wordsPerLine + measured width)
+    │       ├─ For each word highlight state:
+    │       │   └─ Render full-frame PNG (all words visible, one highlighted)
+    │       └─ Return array of { buffer, startTime, endTime }
+    │
+    ├─ Write all PNGs to temp dir
+    ├─ Build FFmpeg filter_complex (same overlay chain as Snapchat canvas)
+    │   One overlay input per word-highlight PNG
+    └─ Run FFmpeg, then clean up temp PNGs
+
+4. OUTPUT
+   └─ { success: true, outputPath: '/path/to/captioned.mp4' }
+```
+
+### Pipeline Integration (Optional)
+
+If you have a multi-step video processing pipeline, captions fit in as the last visual step (after face swap, style transfer, animation, etc.):
+
+```
+Step 1: Download source video
+Step 2: Scene detection (split into scenes)
+Step 3: Character swap (face replacement)
+Step 4: Niche styling (style transfer)
+Step 5: Motion animation (video generation)
+Step 6: Caption overlay  ← THIS IS WHERE CAPTIONS GO
+Step 7: Voice/audio (optional)
+```
+
+To integrate:
+
+```js
+import { applySceneCaptions } from './services/sceneCaptionService.js';
+
+// In your pipeline, after all visual processing is done:
+if (intake.captions?.enabled && intake.captions?.scenes?.length > 0) {
+  const sceneCaptions = intake.captions.scenes.map((scene, idx) => ({
+    sceneNumber: idx,
+    startTime: scene.startTime,
+    endTime: scene.endTime,
+    duration: scene.endTime - scene.startTime,
+    caption: scene.caption,
+    style: scene.style || intake.captions.defaultStyle,
+    styleType: scene.styleType || intake.captions.defaultStyleType,
+    position: scene.position,
+    font: scene.font,
+    fontSize: scene.fontSize,
+    fontWeight: scene.fontWeight,
+    textColor: scene.textColor,
+    borderColor: scene.borderColor,
+    borderStyle: scene.borderStyle,
+    borderWidth: scene.borderWidth,
+    displayMode: scene.displayMode || 'static',
+  }));
+
+  const result = await applySceneCaptions(inputVideoPath, sceneCaptions, outputVideoPath);
+
+  if (result.success) {
+    // Use outputVideoPath as input for next step
+  }
+}
+```
+
+### Intake Config Shape (Full Pipeline)
+
+When captions are part of a larger pipeline, the config object looks like this:
+
+```json
+{
+  "captions": {
+    "enabled": true,
+    "defaultStyle": "classic_white",
+    "defaultStyleType": "snapchat",
+    "scenes": [
+      {
+        "sceneNumber": 0,
+        "startTime": 0,
+        "endTime": 3.2,
+        "caption": "Watch this transformation",
+        "style": "classic_white",
+        "styleType": "snapchat",
+        "position": { "x": 0.5, "y": 0.78 },
+        "font": "Inter",
+        "fontSize": 28,
+        "displayMode": "static"
+      },
+      {
+        "sceneNumber": 1,
+        "startTime": 3.2,
+        "endTime": 6.8,
+        "caption": "The result is insane",
+        "style": "classic_yellow",
+        "styleType": "tiktok",
+        "displayMode": "animated"
+      }
+    ]
+  }
+}
+```
+
+### Error Handling
+
+The services throw on FFmpeg errors. Wrap calls in try/catch:
+
+```js
+try {
+  const result = await applySceneCaptions(videoPath, sceneCaptions, outputPath);
+  if (result.success && fs.existsSync(outputPath)) {
+    // Success — use captioned video
+  } else {
+    // FFmpeg ran but produced no output — fall back to original video
+  }
+} catch (error) {
+  console.error('Caption overlay failed:', error.message);
+  // Fall back to video without captions — don't block the pipeline
+}
+```
+
+Common errors:
+- **FFmpeg not found**: Make sure `@ffmpeg-installer/ffmpeg` is installed, or set `FFMPEG_PATH` env var
+- **Font not found**: FFmpeg will use a fallback font — captions still render but may look different
+- **Canvas not available**: Falls back to FFmpeg drawtext automatically (Snapchat only)
+- **Empty caption text**: Scenes with empty/whitespace captions are skipped, video copied as-is
+
+---
+
 ## Dependencies
 
 - `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` — FFmpeg wrapper
