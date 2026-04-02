@@ -316,7 +316,9 @@ async function generateSnapchatCaptionCanvas(text, style, videoWidth, options = 
     console.log(`   📝 Snapchat canvas: text="${text}", baseFontSize=${baseFontSize}, scaledFontSize=${scaledFontSize}, videoWidth=${videoWidth}, customFontSize=${options.customFontSize}, textColor=${options.textColor}, borderStyle=${options.borderStyle}`);
     // Use resolved font from options (DejaVu Sans for Snapchat mode), fallback to DejaVu Sans
     const fontName = options.fontName || 'DejaVu Sans';
-    const fontWeight = style.text.font.includes('bold') ? 'bold' : 'normal';
+    // Extract actual font weight from style string (supports "500", "bold", "normal")
+    const fontWeightMatch = style.text.font.match(/^(\d{3}|bold|normal)\s/);
+    const fontWeight = options.fontWeight || (fontWeightMatch ? fontWeightMatch[1] : 'normal');
     const scaledFont = `${fontWeight} ${scaledFontSize}px "${fontName}", "Helvetica Neue", Helvetica, Arial, "DejaVu Sans", sans-serif, "Apple Color Emoji", "Noto Color Emoji"`;
 
     // Create temporary canvas to measure text
@@ -430,7 +432,7 @@ async function generateSnapchatCaptionCanvas(text, style, videoWidth, options = 
     if (borderStyle === 'full') {
         const strokeWidth = Math.round(3 * (videoWidth / 1080));
         ctx.strokeStyle = options.borderColor || '#000000';
-        ctx.lineWidth = strokeWidth * 2;
+        ctx.lineWidth = strokeWidth;
         ctx.lineJoin = 'round';
         lines.forEach((line, i) => {
             renderLineWords(line, textStartY + i * lineHeight, (word, x, y) => ctx.strokeText(word, x, y));
@@ -820,7 +822,15 @@ export function generateTikTokCaptionCanvas(text, styleId, options = {}) {
 
     const fontSize = options.fontSize || parseInt(style.font.match(/(\d+)px/)?.[1] || style.font.match(/\d+/)?.[0] || 48);
     const scaledFontSize = Math.round(fontSize * (videoWidth / 1080));
-    const fontWeight = style.font.includes('bold') || options.fontWeight === 'bold' || options.fontWeight === 'black' ? 'bold' : 'normal';
+    // Resolve font weight: user override > style definition > default to bold (matches CaptionEditor preview)
+    let fontWeight = 'normal';
+    if (options.fontWeight === 'black') fontWeight = '900';
+    else if (options.fontWeight === 'bold') fontWeight = 'bold';
+    else if (options.fontWeight) fontWeight = options.fontWeight;
+    else {
+        const weightMatch = style.font.match(/^(\d{3}|bold|normal)\s/);
+        fontWeight = weightMatch ? weightMatch[1] : 'bold';
+    }
     const fontName = resolveFont(options.font);
 
     // Colors — user overrides or style defaults
@@ -834,7 +844,7 @@ export function generateTikTokCaptionCanvas(text, styleId, options = {}) {
     // Shadow
     const shadow = style.shadow || {};
     const shadowBlur = Math.round((shadow.blur || 4) * (videoWidth / 1080));
-    const shadowColor = shadow.color || 'rgba(0,0,0,0.8)';
+    const shadowColor = shadow.color || 'rgba(0,0,0,0.5)';
     const shadowOffX = Math.round((shadow.offsetX || 0) * (videoWidth / 1080));
     const shadowOffY = Math.round((shadow.offsetY || 2) * (videoWidth / 1080));
 
@@ -928,7 +938,7 @@ export function generateTikTokCaptionCanvas(text, styleId, options = {}) {
                 // Stroke
                 if (strokeWidth > 0) {
                     ctx.strokeStyle = strokeColor;
-                    ctx.lineWidth = strokeWidth * 2;
+                    ctx.lineWidth = strokeWidth;
                     ctx.lineJoin = 'round';
                     ctx.textAlign = 'left';
                     ctx.strokeText(word, wordX, lineY);
