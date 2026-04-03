@@ -21,6 +21,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@napi-rs/canvas": "^0.1.62",
+    "express": "^5.2.1",
     "fluent-ffmpeg": "^2.1.3"
   }
 }

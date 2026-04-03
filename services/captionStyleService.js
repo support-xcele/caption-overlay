@@ -319,7 +319,7 @@ async function generateSnapchatCaptionCanvas(text, style, videoWidth, options = 
     // Extract actual font weight from style string (supports "500", "bold", "normal")
     const fontWeightMatch = style.text.font.match(/^(\d{3}|bold|normal)\s/);
     const fontWeight = options.fontWeight || (fontWeightMatch ? fontWeightMatch[1] : 'normal');
-    const scaledFont = `${fontWeight} ${scaledFontSize}px "${fontName}", "Helvetica Neue", Helvetica, Arial, "DejaVu Sans", sans-serif, "Apple Color Emoji", "Noto Color Emoji"`;
+    const scaledFont = `${fontWeight} ${scaledFontSize}px "${fontName}", "Helvetica Neue", Helvetica, Arial, "DejaVu Sans", sans-serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"`;
 
     // Create temporary canvas to measure text
     const measureCanvas = createCanvas(100, 100);
